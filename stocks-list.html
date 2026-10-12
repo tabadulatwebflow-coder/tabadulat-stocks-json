@@ -1,0 +1,139 @@
+<!-- Stocks list from JSON (replaces Finsweet list-load). Hooks = custom attributes:
+  data-stocks="root"  wrapper around one list + its pagination
+  data-stocks="list"  collection list (.w-dyn-items) | data-stocks="card" collection item (template)
+  data-field="ticker|name|exchange|sector|verdict|logo|url|halal|not-halal"
+  pagination: data-stocks="prev|next" buttons, data-stocks="pages" box with data-stocks="page" + "dots" templates
+  optional: data-stocks="search" input, data-stocks="filter" select/radios (all|PASS|FAIL), data-stocks="count"
+  If the JSON can't load, Webflow's normal pagination keeps working. -->
+<script>
+(function () {
+  if (window.__stocksJson) return; window.__stocksJson = 1;
+  var SRC = "https://cdn.jsdelivr.net/gh/OWNER/REPO@main/dist/stocks.json";
+  if (SRC.indexOf("/OWNER/") > -1) return; // not configured yet: Webflow pagination stays in charge
+  var PER_PAGE = 10, ACTIVE = ["is-list-active", "w--current"], OFF = "is-list-pagination-disabled";
+  var isAr = location.pathname.indexOf("/ar-ae") === 0;
+  var base = (isAr ? "/ar-ae" : "") + "/halalstockscreener/";
+  var dataP;
+  function load() {
+    if (!dataP) dataP = fetch(isAr ? SRC.replace("stocks.json", "stocks-ar.json") : SRC)
+      .then(function (r) { if (!r.ok) throw r; return r.json(); })
+      .catch(function () { return isAr ? fetch(SRC).then(function (r) { return r.json(); }) : null; })
+      .catch(function () { return null; });
+    return dataP;
+  }
+  function show(e, on) { e.classList.toggle("w-condition-invisible", !on); e.style.display = on ? "" : "none"; }
+  function q(el, s) { return el.querySelector('[data-stocks="' + s + '"]'); }
+
+  function init(root) {
+    var list = q(root, "list");
+    if (!list || list.dataset.stocksReady) return;
+    list.dataset.stocksReady = "1";
+    var items = list.classList.contains("w-dyn-items") ? list : list.querySelector(".w-dyn-items") || list;
+    var tpl = q(items, "card"); if (!tpl) return; tpl = tpl.cloneNode(true);
+    var pag = q(root, "pagination") || root.querySelector(".w-pagination-wrapper");
+    var pagesBox = pag && (q(pag, "pages") || pag);
+    var pageT = pagesBox && q(pagesBox, "page"), dotsT = pagesBox && q(pagesBox, "dots");
+    pageT = pageT ? pageT.cloneNode(true) : null; dotsT = dotsT ? dotsT.cloneNode(true) : null;
+    var prev = pag && q(pag, "prev"), next = pag && q(pag, "next");
+    if (pag && next && !prev) { // Webflow omits "previous" on page 1
+      prev = next.cloneNode(true); prev.setAttribute("data-stocks", "prev");
+      prev.style.transform = "scaleX(-1)"; pag.insertBefore(prev, pag.firstChild);
+    }
+    var search = q(root, "search"), countEl = q(root, "count");
+    var all = [], view = [], page = 1, filter = "all", query = "";
+
+    function each(c, f, fn) { c.querySelectorAll('[data-field="' + f + '"]').forEach(fn); }
+    function card(d) {
+      var c = tpl.cloneNode(true), pass = d.h === "PASS";
+      each(c, "ticker", function (e) { e.textContent = d.s; });
+      each(c, "name", function (e) { e.textContent = d.n; });
+      each(c, "exchange", function (e) { e.textContent = d.x; });
+      each(c, "sector", function (e) { e.textContent = d.sec; });
+      each(c, "verdict", function (e) { e.textContent = d.v; });
+      each(c, "logo", function (e) {
+        e.removeAttribute("srcset"); e.removeAttribute("sizes"); e.loading = "lazy"; e.decoding = "async";
+        if (d.l) { e.src = d.l; e.alt = d.n + " logo"; } show(e, !!d.l);
+      });
+      each(c, "url", function (e) { e.href = base + d.u; });
+      each(c, "halal", function (e) { show(e, pass); });
+      each(c, "not-halal", function (e) { show(e, !pass); });
+      return c;
+    }
+    function go(n) {
+      page = n; render();
+      var top = root.getBoundingClientRect().top + scrollY - 120;
+      if (top < scrollY) scrollTo({ top: top, behavior: "smooth" });
+    }
+    function prep(el, onClick) {
+      if (el.tagName === "A") { el.removeAttribute("href"); el.setAttribute("role", "button"); el.tabIndex = 0; }
+      el.style.cursor = "pointer";
+      el.addEventListener("click", function (e) { e.preventDefault(); onClick(); });
+      el.addEventListener("keydown", function (e) { if (e.key === "Enter") onClick(); });
+    }
+    if (prev) prep(prev, function () { if (page > 1) go(page - 1); });
+    if (next) prep(next, function () { if (page < Math.ceil(view.length / PER_PAGE)) go(page + 1); });
+
+    function renderPag(pages) {
+      if (!pag) return;
+      pag.style.display = pages > 1 ? "" : "none";
+      [[prev, page <= 1], [next, page >= pages]].forEach(function (p) {
+        if (!p[0]) return; p[0].classList.toggle(OFF, p[1]); p[0].setAttribute("aria-disabled", p[1]);
+        p[0].style.display = "";
+      });
+      if (!pageT) return;
+      var nums = [1], frag = document.createDocumentFragment(), last = 0;
+      for (var i = Math.max(2, page - 1); i <= Math.min(pages - 1, page + 1); i++) nums.push(i);
+      if (pages > 1) nums.push(pages);
+      nums.forEach(function (n) {
+        if (n - last > 1 && dotsT) frag.appendChild(dotsT.cloneNode(true));
+        var b = pageT.cloneNode(true), on = n === page;
+        b.textContent = n; b.style.display = "";
+        ACTIVE.forEach(function (c) { b.classList.toggle(c, on); });
+        if (on) b.setAttribute("aria-current", "page");
+        prep(b, function () { if (n !== page) go(n); });
+        frag.appendChild(b); last = n;
+      });
+      if (pagesBox === pag) { // no separate box: keep prev/next, replace the middle
+        Array.prototype.slice.call(pag.children).forEach(function (c) { if (c !== prev && c !== next) c.remove(); });
+        pag.insertBefore(frag, next || null);
+      } else pagesBox.replaceChildren(frag);
+    }
+    function render() {
+      var pages = Math.max(1, Math.ceil(view.length / PER_PAGE));
+      if (page > pages) page = pages;
+      var frag = document.createDocumentFragment();
+      view.slice((page - 1) * PER_PAGE, page * PER_PAGE).forEach(function (d) { frag.appendChild(card(d)); });
+      items.replaceChildren(frag);
+      if (countEl) countEl.textContent = view.length.toLocaleString();
+      renderPag(pages);
+    }
+    function apply() {
+      var s = query.trim().toLowerCase();
+      view = all.filter(function (d) {
+        if (filter === "PASS" && d.h !== "PASS") return false;
+        if (filter === "FAIL" && d.h === "PASS") return false;
+        return !s || d.s.toLowerCase().indexOf(s) === 0 || d.n.toLowerCase().indexOf(s) > -1;
+      });
+      if (s) view.sort(function (a, b) { return (b.s.toLowerCase() === s) - (a.s.toLowerCase() === s); });
+      page = 1; render();
+    }
+    if (search) {
+      var t; search.addEventListener("input", function () { clearTimeout(t); t = setTimeout(function () { query = search.value; apply(); }, 150); });
+      var form = search.closest("form"); if (form) form.addEventListener("submit", function (e) { e.preventDefault(); });
+    }
+    root.querySelectorAll('[data-stocks="filter"]').forEach(function (f) {
+      f.addEventListener("change", function () { filter = f.value || "all"; apply(); });
+    });
+    load().then(function (data) {
+      if (!data || !data.items) return; // fall back to Webflow pagination
+      all = view = data.items; render(); root.setAttribute("data-stocks-loaded", data.count);
+    });
+  }
+  function boot() {
+    document.querySelectorAll('[data-stocks="list"]').forEach(function (l) {
+      init(l.closest('[data-stocks="root"]') || l.parentElement);
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
+})();
+</script>
