@@ -21,7 +21,7 @@ jobs:
           WEBFLOW_TOKEN: ${{ secrets.WEBFLOW_TOKEN }}
           COLLECTION_ID: 694a72b4bc39c8103c7fd5b1
           AR_LOCALE_ID: 6903b27139b715029178a147
-        run: node scripts/build-stocks.mjs
+        run: node build-stocks.mjs
       - name: Commit if changed
         run: |
           git config user.name "stocks-bot"
