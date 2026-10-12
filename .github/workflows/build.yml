@@ -1,0 +1,36 @@
+name: Build stocks.json
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build JSON from Webflow CMS
+        env:
+          WEBFLOW_TOKEN: ${{ secrets.WEBFLOW_TOKEN }}
+          COLLECTION_ID: 694a72b4bc39c8103c7fd5b1
+          AR_LOCALE_ID: 6903b27139b715029178a147
+        run: node scripts/build-stocks.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "stocks-bot"
+          git config user.email "stocks-bot@users.noreply.github.com"
+          git add dist
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update stocks.json"
+          git push
+      - name: Purge jsDelivr cache
+        run: |
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/dist/stocks.json"
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/dist/stocks-ar.json" || true
