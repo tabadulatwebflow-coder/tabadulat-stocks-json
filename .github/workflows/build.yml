@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -29,6 +31,7 @@ jobs:
           git add dist
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Update stocks.json"
+          git pull --rebase origin main
           git push
       - name: Purge jsDelivr cache
         run: |
