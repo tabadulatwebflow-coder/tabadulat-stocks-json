@@ -18,6 +18,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Set A–Z letter on stocks
+        continue-on-error: true   # never block the stocks.json build
+        env:
+          WEBFLOW_WRITE_TOKEN: ${{ secrets.WEBFLOW_TOKEN }}   # same secret; token needs CMS read + write
+          COLLECTION_ID: 694a72b4bc39c8103c7fd5b1
+          AZ_COLLECTION_ID: 6af04bdb3248edbb382544f5
+        run: node set-letters.mjs
       - name: Build JSON from Webflow CMS
         env:
           WEBFLOW_TOKEN: ${{ secrets.WEBFLOW_TOKEN }}
